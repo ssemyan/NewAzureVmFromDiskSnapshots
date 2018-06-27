@@ -25,6 +25,10 @@
 
  .PARAMETER virtualMachineSize
     The size of the VM to create. If omitted will default to Standard_D4s_v3. To get the vm sizes in a region use: Get-AzureRmVMSize -Location <location>
+
+ .PARAMETER Linux
+    If set, OS disk type is set to Linux. If omitted, the OS disk type will be set to Windows
+
 #>
 
 param(
@@ -48,7 +52,10 @@ param(
  $dataSnapshotName,
 
  [string]
- $virtualMachineSize = 'Standard_D4s_v3'
+ $virtualMachineSize = 'Standard_D4s_v3',
+
+ [switch]
+ $Linux
 )
 
 #******************************************************************************
@@ -94,7 +101,7 @@ $publicIp = New-AzureRmPublicIpAddress -Name $ipName -ResourceGroupName $resourc
 
 #Initialize virtual machine configuration with boot diagnostics disabled
 $virtualMachineName = "${baseName}_hostVm"
-Write-Host "Creating VM Config with boot diagnostics disabled"
+Write-Host "Creating VM Config of size $virtualMachineSize with boot diagnostics disabled"
 $VirtualMachine = New-AzureRmVMConfig -VMName $virtualMachineName -VMSize $virtualMachineSize | Set-AzureRmVMBootDiagnostics -disable
 
 # Create and add OS disk
@@ -103,7 +110,16 @@ Write-Host "Creating os disk $osDiskName"
 $snapshot = Get-AzureRmSnapshot -ResourceGroupName $snapResourceGroupName -SnapshotName $osSnapshotName
 $diskConfig = New-AzureRmDiskConfig -Location $snapshot.Location -SourceResourceId $snapshot.Id -CreateOption Copy
 $disk = New-AzureRmDisk -Disk $diskConfig -ResourceGroupName $resourceGroupName -DiskName $osDiskName
-$VirtualMachine = Set-AzureRmVMOSDisk -VM $VirtualMachine -ManagedDiskId $disk.Id -CreateOption Attach -Windows
+
+if ($Linux)
+{
+    Write-Host "Attaching OS disk as type Linux"
+    $VirtualMachine = Set-AzureRmVMOSDisk -VM $VirtualMachine -ManagedDiskId $disk.Id -CreateOption Attach -Linux
+} 
+else {
+    Write-Host "Attaching OS disk as type Windows"
+    $VirtualMachine = Set-AzureRmVMOSDisk -VM $VirtualMachine -ManagedDiskId $disk.Id -CreateOption Attach -Windows
+}
 
 # Create and add data disk if specified
 if (!$dataSnapshotName)
@@ -129,4 +145,5 @@ Write-Host "Creating VM $virtualMachineName"
 New-AzureRmVM -VM $VirtualMachine -ResourceGroupName $resourceGroupName -Location $snapshot.Location
 
 #Done
-Write-Host "VM created. Public IP: $publicIp.IpAddress"
+$IpAddress = $publicIp.IpAddress
+Write-Host "VM created. Public IP: $IpAddress"
